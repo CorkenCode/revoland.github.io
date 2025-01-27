@@ -1,0 +1,788 @@
+<HTML>
+    <head>
+        <title> Revoland </title>
+    </head>
+
+    <body>
+        <canvas id=myCanvas width=1350 height=600 style="background-color: skyblue;"> </canvas>
+
+        <script>
+         var ctx = myCanvas.getContext("2d"); 
+ var IDs = [];
+ // revoland specific variables
+ levelEnding=false;
+ levelEndingTimer=100;
+ // toglble bools for debug
+        var showHitboxes = false;
+        //as to not reuse IDS
+        var db2 = "2r2fv";
+        var usedIDs = 0;
+        var camX;
+        var camY;
+        var thingSprite = {};
+        var thingX = {};
+        var thingY = {};
+        var thingVelX = {};
+        var thingVelY = {};
+        var thingSize = {};
+        var thingRaws = {};
+        var thingRaws2 = {}
+        var coyote = 0;
+        var pressedKeys = {};
+        //player variables
+        var playerDir = "Right";
+        
+        
+        var img = new Image();
+        //theese are for phisics
+        var priorX = {};
+        var priorY = {};
+        // Your code goes here! 
+        // If you're not sure how to code Javascript, go back and read the S2JS tutorials 
+        //player should be first thing spawned                                                                                 
+        var player=CreateThing("pal.png",10+000,1000-200,10,"GravityDrag0Hp112RespawnsRX90RY1100Dynamicdamage",{"Test":67,"SlashCooldownMax":10,"SlashCooldown":0,"Hp":200,"MaxHp":200,"SlashDamage":0,"DynamicDamage":{"DefaultStrenght":1}});
+        //inventory
+        var playerWeapon = CreateThing("no.png",1350,1000,0,"StaticTriggerParentPbound"+player,{"Parent":player,"ParentXOffset":520,"ParentYOffset":-350});
+        var noble = CreateThing("Noble.png",200,1000,10,"GravityDrag1Hp50RespawnsRX209RY11",{"Hp":150,"MaxHp":150});
+        var mercenary;
+        var horse;
+        var gulliotine;
+        GenerateLevel();
+        function GameLoop(){
+            //revoland level ending
+            if(levelEnding){
+                levelEndingTimer--;
+                if(levelEndingTimer<0){
+                   pressedKeys[77]=true;
+                }
+                CreateThing("levelcomplete.png",thingX[player]-250,thingY[player]-370,0,"StaticTriggerDecay10",{});
+            }
+            //controlls
+            PlayerController();
+            //reduce timers
+            
+            coyote-=0.1;
+            //camera
+            camX=thingX[player];
+            camY=thingY[player];
+            //clear canvas
+             ctx.clearRect(0, 0, myCanvas.width, myCanvas.height);
+             //background
+             var bg = new Image();
+             bg.src = "backgrond.png";
+             ctx.drawImage(bg,0,0);
+             //player hp
+             //display health
+             ctx.font = "bold 30px serif";
+             ctx.fillStyle="red"
+             ctx.fillText("-"+thingRaws2[player]["Hp"]+"-",300,25);
+             ctx.fillText("hp",320,50);
+             ctx.fillStyle="green"
+             ctx.font = "10px sans-serif";             
+             //Player position
+             //ctx.fillText(thingX[player],500,10);
+             //ctx.fillText(thingY[player],630,10);
+             //ctx.fillText(thingRaws[mercenary],10,10);
+             //NoblePosition
+             //ctx.fillText(thingX[mercenary],500,20);
+             //ctx.fillText(thingY[mercenary],630,20);
+            //print things
+            //render background first
+            for(var i = 0;i<IDs.length;i++){
+                var img = new Image();
+                  ctx.fillStyle= "green";
+                //render hitboxes first
+                if(showHitboxes){
+                    ctx.fillRect(thingX[IDs[i]]-camX+675,thingY[IDs[i]]-camY+350,thingSize[IDs[i]]*2,thingSize[IDs[i]]*2);
+                }
+                if(thingRaws[IDs[i]].includes("Background")){
+                   //render only if in screen
+                    if(Math.abs(thingX[IDs[i]]-thingX[player])<2000&&Math.abs(thingY[IDs[i]]-thingY[player])<2000){
+                            //check if image needs fliped
+                        img.src = thingSprite[IDs[i]];
+                        if(thingRaws[IDs[i]].includes("Mirror")){
+                            img.style.width = '64px';
+                            //ctx.fillText(img.width,10,30);
+                        }
+                        ctx.drawImage(img,thingX[IDs[i]]-camX+675,thingY[IDs[i]]-camY+350);
+                    }
+               }
+            }
+            //normal layer renderation
+                for(var i = 0;i<IDs.length;i++){
+                            var img = new Image();
+                    ctx.fillStyle= "green";
+                    //render hitboxes first
+                    if(showHitboxes){
+                    ctx.fillRect(thingX[IDs[i]]-camX+675,thingY[IDs[i]]-camY+350,thingSize[IDs[i]]*2,thingSize[IDs[i]]*2);
+                    }
+                    //render only if in screen                                                          and not in background 
+                    if(Math.abs(thingX[IDs[i]]-thingX[player])<2000&&Math.abs(thingY[IDs[i]]-thingY[player])<2000&&!thingRaws[IDs[i]].includes("Background")){
+                            //check if image needs fliped
+                        img.src = thingSprite[IDs[i]];
+                        if(thingRaws[IDs[i]].includes("Mirror")){
+                            img.style.width = '64px';
+                            //ctx.fillText(img.width,10,30);
+                        }
+                        ctx.drawImage(img,thingX[IDs[i]]-camX+675,thingY[IDs[i]]-camY+350);
+                    }
+                    thingPhysics(IDs[i]);
+                }
+
+        }
+        
+        function thingPhysics(ID){
+            CheckTriggers(ID);
+            if(!thingRaws[ID].includes("Static")){
+                Move(ID,thingVelX[ID],thingVelY[ID]);
+            }
+            
+            if(thingRaws[ID].includes("Gravity")){
+                thingVelY[ID]=thingVelY[ID]+1;
+            }
+            if(thingRaws[ID].includes("Drag")){
+                thingVelY[ID]*= (100-thingRaws[ID].substring(thingRaws[ID].indexOf("Drag")+4,thingRaws[ID].indexOf("Drag")+5))/100;
+                thingVelX[ID]*=0.9;
+            }
+            //decay
+            if(thingRaws[ID].includes("Decay")){
+                //this is just a conveinient place to put the attack animation
+                if(thingRaws[ID].includes("Slash")){
+                    if(thingRaws[ID].substring(thingRaws[ID].indexOf("Decay")+5,thingRaws[ID].indexOf("Decay")+7)==20){
+                        thingSprite[ID]="Slash2.png"
+                        if(thingRaws[ID].includes("Mirror")){
+                            thingSprite[ID]="Slash2b.png"
+                        }
+                    }
+                     if(thingRaws[ID].substring(thingRaws[ID].indexOf("Decay")+5,thingRaws[ID].indexOf("Decay")+7)==15){
+                        thingSprite[ID]="Slash3.png"
+                        if(thingRaws[ID].includes("Mirror")){
+                            thingSprite[ID]="Slash3b.png"
+                        }
+                    }
+                }
+                //destroy when timer = 0                                            the timer ends at ten to stop NAN errors
+              if(thingRaws[ID].substring(thingRaws[ID].indexOf("Decay")+5,thingRaws[ID].indexOf("Decay")+7)==10){
+                        Destroy(ID);
+                        
+             }
+                //timer
+                    thingRaws[ID]=thingRaws[ID].substring(0,thingRaws[ID].indexOf("Decay")+5)+((thingRaws[ID].substring(thingRaws[ID].indexOf("Decay")+5,thingRaws[ID].indexOf("Decay")+7)*1)-1)+thingRaws[ID].substring(thingRaws[ID].indexOf("Decay")+7,thingRaws[ID].length);
+            }
+            //end of decay
+            
+            //dumb AI
+            if(thingRaws[ID].includes("Dumbai")){
+                Move(ID,thingRaws2[ID]["WalkSpeed"],0);
+                if(Math.floor(Math.random()*100)==3){
+                    thingRaws2[ID]["WalkSpeed"]*=-1;
+                }
+
+            }
+            //lasher, guy that attack anything
+            if(thingRaws[ID].includes("Lasher")){
+                if(thingRaws2[ID]["SlashCooldown"]>0){
+                    thingRaws2[ID]["SlashCooldown"]-=1;
+                }
+                //rightslash
+                if(thingRaws2[ID]["SlashRight"]&&thingRaws2[ID]["SlashCooldown"]<=0){
+                    thingRaws2[ID]["SlashCooldown"]=thingRaws2[ID]["SlashCooldownMax"];
+                    Slash(ID,"Right",30,2);
+                }
+                //leftslash
+                if(thingRaws2[ID]["SlashLeft"]&&thingRaws2[ID]["SlashCooldown"]<=0){
+                    thingRaws2[ID]["SlashCooldown"]=thingRaws2[ID]["SlashCooldownMax"];
+                    Slash(ID,"Left",-30,2);
+                }
+            }
+            if(thingRaws[ID].includes("Pbound")){
+                thingX[ID]=thingX[thingRaws2[ID]["Parent"]]+thingRaws2[ID]["ParentXOffset"];
+                thingY[ID]=thingY[thingRaws2[ID]["Parent"]]+thingRaws2[ID]["ParentYOffset"];
+            }
+        if(thingRaws[ID].includes("Rightlashtrigger")){
+            thingRaws2[thingRaws2[ID]["Parent"]]["SlashRight"]=false;
+            for(var i = 0;i<IDs.length;i++){
+                if(i!=ID&&i!=thingRaws2[ID]["Parent"]){
+                    if(!thingRaws[i].includes("Static")){
+                        //collision check
+                        if(Math.abs((thingX[ID]+(10-thingSize[IDs[i]]))-thingX[IDs[i]])<thingSize[ID]+thingSize[IDs[i]]&&Math.abs((thingY[ID]+(10-thingSize[IDs[i]]))-thingY[IDs[i]])<thingSize[ID]+thingSize[IDs[i]]){
+                         thingRaws2[thingRaws2[ID]["Parent"]]["SlashRight"]=true;
+                        }
+                    }
+                }
+                }
+                
+            }
+            if(thingRaws[ID].includes("Leftlashtrigger")){
+            thingRaws2[thingRaws2[ID]["Parent"]]["SlashLeft"]=false;
+            for(var i = 0;i<IDs.length;i++){
+                if(i!=ID&&i!=thingRaws2[ID]["Parent"]){
+                    if(!thingRaws[i].includes("Static")){
+                        //collision check
+                        if(Math.abs((thingX[ID]+(10-thingSize[IDs[i]]))-thingX[IDs[i]])<thingSize[ID]+thingSize[IDs[i]]&&Math.abs((thingY[ID]+(10-thingSize[IDs[i]]))-thingY[IDs[i]])<thingSize[ID]+thingSize[IDs[i]]){
+                         thingRaws2[thingRaws2[ID]["Parent"]]["SlashLeft"]=true;
+                        db2=i;   
+                        }
+                    }
+                }
+                }
+                
+            }
+            //wepon upgrade 1
+            if(thingRaws[ID].includes("Wupgrade1")){
+                if(Math.abs((thingX[ID]+(10-thingSize[IDs[player]]))-thingX[player])<thingSize[ID]+thingSize[player]&&Math.abs((thingY[ID]+(10-thingSize[player]))-thingY[player])<thingSize[ID]+thingSize[player]){
+                    CreateThing("rustybroadswordclaimtext.png",thingX[player],thingY[player],0,"TriggerDecay99StaticParentPbound"+player,{"Parent":player,"ParentXOffset":-500,"ParentYOffset":-350});
+                    thingSprite[playerWeapon]="rustybroadsword.png";
+                    thingRaws2[player]["DynamicDamage"]["RustyBroadsword"]=2;
+                    Destroy(ID);
+                }
+            }
+            //player damage system
+            if(thingRaws[ID].includes("Dynamicdamage")){
+                var c = 0;
+                for (const [key, value] of Object.entries(thingRaws2[ID]["DynamicDamage"])) {
+                     c+=value;
+                }
+                thingRaws2[ID]["Damage"]=c*1;
+            }
+            //UI
+            if(thingRaws[ID].includes("Uitrigger")){
+                var t = TriggerCheck(ID);
+                thingRaws2[ID]["UI"]["X"]=thingX[player]+thingRaws2[ID]["UIOffsetX"];
+                thingRaws2[ID]["UI"]["Y"]=thingY[player]+thingRaws2[ID]["UIOffsetY"];
+                if(t==player){
+                    CreateThing(thingRaws2[ID]["UI"]["Sprite"],thingRaws2[ID]["UI"]["X"],thingRaws2[ID]["UI"]["Y"],thingRaws2[ID]["UI"]["Size"],thingRaws2[ID]["UI"]["Raws1"],thingRaws2[ID]["UI"]["Raws2"]);
+                }
+            }
+            //animation
+             if(thingRaws[ID].includes("Animated")){
+                if(thingRaws2[ID]["PlayAnimation"]){
+                    thingRaws2[ID]["AnimationTimer"]++;
+                    if(thingRaws2[ID]["AnimationLoop"]){
+                        if(thingRaws2[ID]["AnimationFrameLenghth"]*thingRaws2[ID]["AnimationFrames"].length<thingRaws2[ID]["AnimationTimer"]+1){
+                            thingRaws2[ID]["AnimationTimer"]=0;
+                        }
+                    }
+                    if(Math.floor(thingRaws2[ID]["AnimationTimer"]/thingRaws2[ID]["AnimationFrameLenghth"])<=thingRaws2[ID]["AnimationFrames"].length){
+                        thingSprite[ID]=thingRaws2[ID]["AnimationFrames"][Math.floor(thingRaws2[ID]["AnimationTimer"]/thingRaws2[ID]["AnimationFrameLenghth"])];
+                    }else{
+                        thingSprite[ID]=thingRaws2[ID]["AnimationFrames"][thingRaws2[ID]["AnimationFrames"].length-1];
+                    }
+                }
+            }
+            //gulliotine
+            if(thingRaws[ID].includes("Gulliotine")){
+                if(TriggerCheck(ID)==noble){
+                    thingRaws2[ID]["PlayAnimation"]=true;
+                }
+                if(thingRaws2[ID]["AnimationTimer"]==20){
+                    levelEnding=true;
+                    thingSprite[noble]="beheadednoble.png";
+                }
+            }
+        }
+            
+        
+        
+        function Move(ID,X,Y){
+            thingY[ID]=thingY[ID]+Y;
+            MoveY(ID);
+            thingX[ID]=thingX[ID]+X;
+            MoveX(ID);
+
+             
+             
+            
+            
+            priorX[ID]=thingX[ID];
+            priorY[ID]=thingY[ID];
+        }
+        
+        
+        
+        
+        
+        
+       function CreateThing(Sprite,X,Y,Size,Raws,Raws2){
+           var ID=usedIDs;
+           usedIDs++;
+           
+           thingSprite[ID]=Sprite;
+           thingX[ID]=X;
+           thingY[ID]=Y;
+           priorX[ID]=X;
+           priorY[ID]=X;
+           thingVelX[ID]=0;
+           thingVelY[ID]=0;
+           thingSize[ID]=Size;
+           thingRaws[ID]=Raws;
+           thingRaws2[ID]=Raws2;
+           IDs.push(ID);
+           return(ID);
+       }
+      
+       function Destroy(ID){
+           IDs.splice(IDs.indexOf(ID),1);
+           //ctx.fillText(ID,10,20);
+       }
+       function MoveX(ID){
+           for(var i = 0;i<IDs.length;i++){
+               //dont colide with self
+               if(IDs[i]!=ID){
+                   //x
+                   var floorClip = false;
+                               var db = 0;
+                               //            this thingsize is to correct a scaling error
+                   while(Math.abs((thingX[ID]+(10-thingSize[IDs[i]]))-thingX[IDs[i]])<thingSize[ID]+thingSize[IDs[i]]&&Math.abs((thingY[ID]+(10-thingSize[IDs[i]]))-thingY[IDs[i]])<thingSize[ID]+thingSize[IDs[i]]&&db<50 && !thingRaws[ID].includes("Trigger")&&!thingRaws[IDs[i]].includes("Trigger")){
+                       //                 this is the direction of movement math
+                      
+                       if(Math.abs((Math.abs(thingX[ID])-Math.abs(priorX[ID]))/Math.abs(Math.abs(thingX[ID])-Math.abs(priorX[ID]))*-1)==1){
+                           thingX[ID]=thingX[ID]+ ((Math.abs(thingX[ID])-Math.abs(priorX[ID]))/Math.abs(Math.abs(thingX[ID])-Math.abs(priorX[ID]))*-1);
+                           //trasfer velocity
+                           thingVelX[ID]/=2;
+                           thingVelX[IDs[i]]+=thingVelX[ID];
+                       }
+
+
+                       
+                       
+                       db++
+                       
+                       
+
+                     
+                   }
+                   
+
+                                     
+                   
+
+                   
+               }
+           }
+       }
+        function MoveY(ID){
+           for(var i = 0;i<IDs.length;i++){
+               //dont colide with self
+               if(IDs[i]!=ID){
+                   //x
+                   var floorClip = false;
+                               var db = 0;
+                   while(Math.abs((thingX[ID]+(10-thingSize[IDs[i]]))-thingX[IDs[i]])<thingSize[ID]+thingSize[IDs[i]]&&Math.abs((thingY[ID]+(10-thingSize[IDs[i]]))-thingY[IDs[i]])<thingSize[ID]+thingSize[IDs[i]]&&db<50 && !thingRaws[ID].includes("Trigger")&&!thingRaws[IDs[i]].includes("Trigger")){
+                       //                 this is the direction of movement math
+                      
+                       //y must go first to stop reverse sliding
+                       if(Math.abs(((Math.abs(thingY[ID])-Math.abs(priorY[ID]))/Math.abs(Math.abs(thingY[ID])-Math.abs(priorY[ID])))*-1)==1){
+                            thingY[ID]=thingY[ID]+ (((Math.abs(thingY[ID])-Math.abs(priorY[ID]))/Math.abs(Math.abs(thingY[ID])-Math.abs(priorY[ID])))*-1);
+                             thingVelY[ID]/=2;
+                             thingVelY[IDs[i]]+=thingVelY[ID];
+                             floorClip=true;
+                             if(ID==player){
+                                coyote=0.4;
+                             }
+                       }
+                      
+
+                       
+                       
+                       db++
+                       
+                       
+                       if(floorClip&&i==IDs.length-1){
+                       thingY[ID]+=0.0;
+                   }
+                     
+                   }
+                   
+
+                                     
+                   
+
+                   
+               }
+           }
+       }
+               // checktriggers checks for trigers intercecting an object while triggercheck checks for objects intersecting a trigger
+               function TriggerCheck(ID){
+                   var intersect;
+                   if(thingRaws[ID].includes("Trigger")){
+                        for(var i = 0;i<IDs.length;i++){
+                            if(IDs[i]!=ID&&!thingRaws[IDs[i]].includes("Trigger")){
+                                if(Math.abs((thingX[ID]+(10-thingSize[IDs[i]]))-thingX[IDs[i]])<thingSize[ID]+thingSize[IDs[i]]&&Math.abs((thingY[ID]+(10-thingSize[IDs[i]]))-thingY[IDs[i]])<thingSize[ID]+thingSize[IDs[i]]){
+                                    intersect = IDs[i];
+                                }
+                            }
+                        }
+                   }
+                   return(intersect);
+               }
+               function CheckTriggers(ID){
+           for(var i = 0;i<IDs.length;i++){
+               //dont colide with self
+               if(IDs[i]!=ID&&!thingRaws[ID].includes("Trigger")){
+                   //x
+                   var floorClip = false;
+                               var db = 0;
+                   if(Math.abs((thingX[ID]+(10-thingSize[IDs[i]]))-thingX[IDs[i]])<thingSize[ID]+thingSize[IDs[i]]&&Math.abs((thingY[ID]+(10-thingSize[IDs[i]]))-thingY[IDs[i]])<thingSize[ID]+thingSize[IDs[i]]&&db<50 && !thingRaws[ID].includes("Trigger")&&thingRaws[IDs[i]].includes("Trigger")){
+                       //                 this is the direction of movement math
+                      
+                       
+                       if(Math.abs(((Math.abs(thingY[ID])-Math.abs(priorY[ID]))/Math.abs(Math.abs(thingY[ID])-Math.abs(priorY[ID])))*-1)==1){
+                           
+
+                       }
+                        if(Math.abs((Math.abs(thingX[ID])-Math.abs(priorX[ID]))/Math.abs(Math.abs(thingX[ID])-Math.abs(priorX[ID]))*-1)==1){
+                           
+                       
+                       }
+                      //olddamage check, It still works, but the new way is less complicated                                    change this 11 with a find next capital function
+                      //if(thingRaws[IDs[i]].includes("Slash")&&thingRaws[IDs[i]].substring(thingRaws[IDs[i]].indexOf("Parent")+6,thingRaws[IDs[i]].indexOf("Parent")+NextCap(thingRaws[IDs[i]],thingRaws[IDs[i]].indexOf("Parent")+7)+7)!=ID){
+                        //  ctx.fillText(thingRaws[IDs[i]].substring(thingRaws[IDs[i]].indexOf("Parent")+6,thingRaws[IDs[i]].indexOf("Parent")+NextCap(thingRaws[IDs[i]],7)+7),900,10);
+                          //Damage(ID,thingRaws2[i]["Damage"]);
+                      //}
+                      //new damage check
+                      if(thingRaws[IDs[i]].includes("Slash")&&thingRaws2[IDs[i]]["Parent"]!=ID&&thingRaws[IDs[i]].includes("Trigger")&&!thingRaws[ID].includes("Trigger")){
+                          Damage(ID,thingRaws2[IDs[i]]["Damage"]);
+                      }
+                      //lift check                                                                                                                                                          v needs patch here while slash doesn't, it just uses 7
+                      if(thingRaws[IDs[i]].includes("Lift")&&thingRaws[IDs[i]].substring(thingRaws[IDs[i]].indexOf("Parent")+6,thingRaws[IDs[i]].indexOf("Parent")+NextCap(thingRaws[IDs[i]],thingRaws[IDs[i]].indexOf("Parent")+7)+7)!=ID){
+                          thingVelY[ID]-=thingRaws[IDs[i]].substring(thingRaws[IDs[i]].indexOf("Lift")+4,thingRaws[IDs[i]].indexOf("Lift")+4+NextCap(thingRaws[IDs[i]],thingRaws[IDs[i]].indexOf("Lift")+4))*1;
+                      }
+                       
+                       db++
+                       
+                       
+                       if(floorClip&&i==IDs.length-1){
+                       thingY[ID]+=0.0;
+                   }
+                     
+                   }
+                   
+
+                                     
+                   
+
+                   
+               }
+           }
+       }
+       function KeyCheck1(Event){
+          pressedKeys[Event.keyCode]=true;
+          }
+function KeyCheck2(Event){
+    pressedKeys[Event.keyCode]=false;
+    
+}
+       function PlayerController(){
+      if(pressedKeys[68]==true){
+          Move(0,1,0);
+          thingVelX[player]+=1;
+          playerDir=1;
+          //movefast
+          if(Math.abs(thingVelX[player])<3&&0==1){
+              thingVelX[player] = 5;
+          }
+      }
+       if(pressedKeys[65]==true){
+          Move(0,-1,0);
+          thingVelX[player]+=-1;
+          playerDir=-1;
+          //movefast
+          if(Math.abs(thingVelX[player])<3&&0==1){
+              thingVelX[player] = -5;
+          }
+      }
+      //jump
+      if(pressedKeys[87]==true&&coyote>0){
+          Move(0,0,-1);
+          //add +horizontal momentum for mario like jumping
+          thingVelY[player]=-10-(Math.abs(thingVelX[player])/2);
+          coyote = 0;
+      }
+      if(pressedKeys[83]==true){
+          thingVelY[player]+=1;
+          Move(0,0,1);
+      }
+      //attack
+      thingRaws2[player]["SlashCooldown"]-=1;
+      if(pressedKeys[90]==true){
+          //check cooldown
+          if(thingRaws2[player]["SlashCooldown"]<1){
+              //mirror
+          var v = "";
+          if(playerDir==-1){
+              v = "Mirror";
+              // should be the same as the slas script, except adds damage boosters from players inventory
+                        CreateThing("Slash1b.png",thingX[player]+(playerDir*25),thingY[player],10,"TriggerDecay25SlashStaticParent"+player+v,{Parent:player,"Damage":thingRaws2[player]["Damage"]});
+          }
+          else{
+                        CreateThing("Slash1.png",thingX[player]+(playerDir*25),thingY[player],10,"TriggerDecay25SlashStaticParent"+player+v,{Parent:player,"Damage":thingRaws2[player]["Damage"]});
+          }
+          thingRaws2[player]["SlashCooldown"]=thingRaws2[player]["SlashCooldownMax"];
+          }
+          
+      }
+        if(pressedKeys[77]==true){
+            CreateThing("francemap.png",thingX[player]-300,thingY[player]-300,0,"TriggerDecay10Static",{});
+        }
+      //Lift
+      if(pressedKeys[67]==true){
+          //mirror
+          var v = "";
+          if(playerDir==-1){
+              v = "Mirror";
+              // should be the same as the lift script
+                        CreateThing("lift.png",thingX[player]+(playerDir*25),thingY[player],10,"TriggerDecay25Lift0.3StaticParent"+player+v,{Parent:player});
+          }else{
+                CreateThing("lift.png",thingX[player]+(playerDir*25),thingY[player],10,"TriggerDecay25Lift0.3StaticParent"+player+v,{Parent:player});
+          }
+          }
+       }
+       function MakeThing(){
+           
+                  CreateThing("fwgw",Math.random(),Math.random()*100,10);
+       }
+       //attack script
+       function Slash(ID,dir,offset,Damage){
+           
+           if(dir=="Right"){
+               CreateThing("Slash1.png",thingX[ID]+(playerDir*10)+offset,thingY[ID],10,"TriggerDecay25SlashStaticParent"+ID,{Parent:ID,"Damage":Damage});
+           }
+            if(dir=="Left"){
+               CreateThing("Slash1.png",thingX[ID]+(playerDir*10)+offset,thingY[ID],10,"TriggerDecay25SlashStaticParent"+ID+"Mirror",{Parent:ID,"Damage":Damage});
+           }
+               
+           
+       }
+       function Lift(ID,dir){
+           if(dir=="Right"){
+               CreateThing("lift.png",thingX[ID]+(playerDir*10),thingY[ID],0,"TriggerDecay25Lift1StaticParent"+ID,{Parent:ID});
+           }
+            if(dir=="Left"){
+               CreateThing("lift.png",thingX[ID]+(playerDir*10),thingY[ID],0,"TriggerDecay25Lift1StaticParent"+ID+"Mirror",{Parent:ID});
+           }
+       }
+       function Damage(ID,amount){
+           if(thingRaws2[ID]["Hp"]!=undefined&&amount!=undefined){
+                //old damage system damage                                                  substitute 2 with  NextCap(thingRaws[ID],index("Hp"))
+                  //thingRaws[ID]=thingRaws[ID].substring(0,thingRaws[ID].indexOf("Hp")+2)+((thingRaws[ID].substring(thingRaws[ID].indexOf("Hp")+2,thingRaws[ID].indexOf("Hp")+4)*1)-1)+thingRaws[ID].substring(thingRaws[ID].indexOf("Hp")+4,thingRaws[ID].length);
+                 // ctx.fillText("fw"+thingRaws[ID].substring(0,thingRaws[ID].indexOf("Hp")+NextCap(thingRaws[ID],thingRaws[ID].indexOf("Hp"))+((thingRaws[ID].substring(thingRaws[ID].indexOf("Hp")+NextCap(thingRaws[ID],thingRaws[ID].indexOf("Hp")),thingRaws[ID].indexOf("Hp")+NextCap(thingRaws[ID],thingRaws[ID].indexOf("Hp"))+2)*1)-1)+thingRaws[ID].substring(thingRaws[ID].indexOf("Hp")+NextCap(thingRaws[ID],thingRaws[ID].indexOf("Hp"))+2),thingRaws[ID].length),40,40);
+                          //destroy when HP = 0                                            the Hp ends at ten to stop NAN errors
+            //  if(thingRaws[ID].substring(thingRaws[ID].indexOf("Hp")+2,thingRaws[ID].indexOf("Hp")+4)==10){
+                  //if(thingRaws[ID].includes("Respawns")){
+                    //   thingX[ID]=thingRaws[ID].substring(thingRaws[ID].indexOf("RX")+2,thingRaws[ID].indexOf("RX")+2+NextCap(thingRaws[ID],thingRaws[ID].indexOf("RX")+2))*1;
+                     //  thingY[ID]=thingRaws[ID].substring(thingRaws[ID].indexOf("RY")+2,thingRaws[ID].indexOf("RY")+2+NextCap(thingRaws[ID],thingRaws[ID].indexOf("RY")+2))*1;
+                     //  Heal(ID,10);
+                //  }
+                  //else{
+                    //   Destroy(ID);
+                  //}
+                       
+                        
+             //}
+             //new damage system
+             thingRaws2[ID]["Hp"]-=amount;
+             //death
+             if(thingRaws2[ID]["Hp"]<=0){
+                 if(thingRaws[ID].includes("Respawns")){
+                     thingRaws2[ID]["Hp"]=thingRaws2[ID]["MaxHp"];
+                     thingX[ID]=thingRaws[ID].substring(thingRaws[ID].indexOf("RX")+2,thingRaws[ID].indexOf("RX")+2+NextCap(thingRaws[ID],thingRaws[ID].indexOf("RX")+2))*1;
+                     thingY[ID]=thingRaws[ID].substring(thingRaws[ID].indexOf("RY")+2,thingRaws[ID].indexOf("RY")+2+NextCap(thingRaws[ID],thingRaws[ID].indexOf("RY")+2))*1;
+                 }else{
+                     Destroy(ID);
+                 }
+             }
+             }
+           }
+           function Heal(ID,amount){
+               
+            if(thingRaws2[ID].includes("Hp")){
+           //old hp system
+                //heal                                               substitute 2 with  NextCap(thingRaws[ID],index("Hp"))
+                  //thingRaws[ID]=thingRaws[ID].substring(0,thingRaws[ID].indexOf("Hp")+2)+((thingRaws[ID].substring(thingRaws[ID].indexOf("Hp")+2,thingRaws[ID].indexOf("Hp")+4)*1)+amount)+thingRaws[ID].substring(thingRaws[ID].indexOf("Hp")+4,thingRaws[ID].length);
+                  //ctx.fillText("fw"+thingRaws[ID].substring(0,thingRaws[ID].indexOf("Hp")+NextCap(thingRaws[ID],thingRaws[ID].indexOf("Hp"))+((thingRaws[ID].substring(thingRaws[ID].indexOf("Hp")+NextCap(thingRaws[ID],thingRaws[ID].indexOf("Hp")),thingRaws[ID].indexOf("Hp")+NextCap(thingRaws[ID],thingRaws[ID].indexOf("Hp"))+2)*1)-1)+thingRaws[ID].substring(thingRaws[ID].indexOf("Hp")+NextCap(thingRaws[ID],thingRaws[ID].indexOf("Hp"))+2),thingRaws[ID].length),40,40);
+                  //new hp system
+                  thingRaws2[ID]["Hp"]
+                          
+            }
+           }
+       
+       
+       function NextCap(string,index) {
+  var count = 0;
+  while(!("ABCDEFGHIJKLMNOPQRSTUVWXYZ").includes(string.substring(index+count,index+1+count))&&count+index<string.length){
+    count++;
+  }
+  return(count);
+  
+}
+function GenerateLevel(){
+            //creationlevel
+        CreateThing("playerhouse.png",10-0,972,0,"Static",{});
+        CreateThing("startspeech.png",123-0,855,0,"Static",{});
+        for(var l = 0; l<200;l++){
+             CreateThing("grass.png",(l*32)-0,1100,16,"Static",{});
+        }
+        //underdirt
+        for(var l = 0; l<300;l++){
+             CreateThing("dirt.png",(l*32)-0,1132,16,"Static",{});
+             CreateThing("dirt.png",(l*32)-0,1164,16,"Static",{});
+             CreateThing("dirt.png",(l*32)-0,1196,16,"Static",{});
+             //3 is the max or else lag =(
+             //CreateThing("dirt.png",(l*32)-0,1228,16,"Static",{});
+             //CreateThing("dirt.png",(l*32)-0,1260,16,"Static",{});
+             //CreateThing("dirt.png",(l*32)-0,1292,16,"Static",{});
+        }
+        
+        for(var l = 0; l<3;l++){
+             CreateThing("grass.png",(l*32)+500,1082,16,"Static",{});
+        }
+        //hill 2
+        for(var l = 0; l<6;l++){
+             CreateThing("grass.png",(l*32)+808,1082,16,"Static",{});
+        }
+        for(var l = 0; l<3;l++){
+             CreateThing("dirt.png",(l*32)+1000,1082,16,"Static",{});
+        }
+        for(var l = 0; l<3;l++){
+             CreateThing("grass.png",(l*32)+1000,1050,16,"Static",{});
+        }
+        //bigspikes
+        CreateThing("bigspikes.png",1096,1068,16,"StaticSlashTriggerParent1993123",{"Damage":3});
+        for(var l = 0; l<4;l++){
+             CreateThing("grass.png",(l*32)+1128,1082,16,"Static",{});
+        }
+        //create first enemy; the mercinary bandit
+        mercenary=CreateThing("mercenarybandit.png",1350,1000,16,"GravityDrag1Hp70DumbaiLasher",{"WalkSpeed":-1,"SlashRight":true,"SlashLeft":false,"SlashCooldownMax":60,"SlashCooldown":0,"Team":1,"Hp":200,"MaxHp":200});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentRightlashtriggerPbound"+mercenary,{"Parent":mercenary,"ParentXOffset":35,"ParentYOffset":-2});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentLeftlashtriggerPbound"+mercenary,{"Parent":mercenary,"ParentXOffset":-35,"ParentYOffset":-2});
+        //hill 2
+        for(var l = 0; l<7;l++){
+             CreateThing("grass.png",(l*32)+1800,1082,16,"Static",{});
+        }
+        for(var l = 0; l<15;l++){
+             CreateThing("dirt.png",(l*32)+2024,1082,16,"Static",{});
+        }
+        for(var l = 0; l<5;l++){
+             CreateThing("grass.png",(l*32)+2024,1050,16,"Static",{});
+        }
+        for(var l = 0; l<6;l++){
+             CreateThing("grass.png",(l*32)+2184,1028,16,"Static",{});
+        }
+         for(var l = 0; l<6;l++){
+             CreateThing("dirt.png",(l*32)+2184,1050,16,"Static",{});
+        }
+        //fake blocks
+         for(var l = 0; l<1;l++){
+             CreateThing("dirt.png",(l*32)+2440,1050,0,"Static",{});
+        }
+         for(var l = 0; l<3;l++){
+             CreateThing("grass.png",(l*32)+2376,996,16,"Static",{});
+        }
+        for(var l = 0; l<3;l++){
+             CreateThing("dirt.png",(l*32)+2376,1028,16,"Static",{});
+        }
+        //create first wepon upgrade
+        CreateThing("rustybroadswordpickup.png",2380,1050,32,"StaticTriggerWupgrade1",{});
+        for(var l = 0; l<4;l++){
+            CreateThing("checkertile.png",2500+(l*56),1020+(l*8),16,"Static",{});
+        }
+        //spikes
+        for(var l = 0; l<6;l++){
+            CreateThing("bigspikes.png",2504+(l*32),1082,16,"StaticSlashTriggerParent1993123",{"Damage":3});
+        }
+        CreateThing("bigspikes.png",2670,1082,16,"StaticSlashTriggerParent1993123",{"Damage":3});
+        //Hill 3
+         for(var l = 0; l<25;l++){
+             CreateThing("dirt.png",(l*32)+2700,1082,16,"Static",{});
+        }
+        for(var l = 0; l<7;l++){
+             CreateThing("grass.png",(l*32)+2700,1050,16,"Static",{});  
+        }
+        for(var l = 0; l<14;l++){
+             CreateThing("dirt.png",(l*32)+2924,1050,16,"Static",{});
+        }
+        for(var l = 0; l<4;l++){
+             CreateThing("grass.png",(l*32)+2924,1018,16,"Static",{});
+        }
+        for(var l = 0; l<5;l++){
+             CreateThing("grass.png",(l*32)+3052,986,16,"Static",{});
+        }
+        for(var l = 0; l<5;l++){
+             CreateThing("dirt.png",(l*32)+3052,1018,16,"Static",{});
+        }
+        for(var l = 0; l<5;l++){
+             CreateThing("grass.png",(l*32)+3212,1018,16,"Static",{});
+        }
+        for(var l = 0; l<4;l++){
+             CreateThing("grass.png",(l*32)+3372,1050,16,"Static",{});
+        }
+        for(var l = 0; l<4;l++){
+             CreateThing("grass.png",(l*32)+3500,1082,16,"Static",{});
+        }
+        mercenary=CreateThing("mercenarybandit.png",4350,1000,16,"GravityDrag1Hp70DumbaiLasher",{"WalkSpeed":-1,"SlashRight":true,"SlashLeft":false,"SlashCooldownMax":60,"SlashCooldown":0,"Team":1,"Hp":200,"MaxHp":200});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentRightlashtriggerPbound"+mercenary,{"Parent":mercenary,"ParentXOffset":35,"ParentYOffset":-2});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentLeftlashtriggerPbound"+mercenary,{"Parent":mercenary,"ParentXOffset":-35,"ParentYOffset":-2});
+        //small hills
+        for(var l = 0; l<8;l++){
+             CreateThing("grass.png",(l*32)+4500,1082,16,"Static",{});
+        }
+        for(var l = 0; l<3;l++){
+             CreateThing("grass.png",(l*32)+4620,1063,16,"Static",{});
+        }
+        mercenary=CreateThing("mercenarybandit.png",5350,1000,16,"GravityDrag1Hp70DumbaiLasher",{"WalkSpeed":-1,"SlashRight":true,"SlashLeft":false,"SlashCooldownMax":60,"SlashCooldown":0,"Team":1,"Hp":200,"MaxHp":200});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentRightlashtriggerPbound"+mercenary,{"Parent":mercenary,"ParentXOffset":35,"ParentYOffset":-2});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentLeftlashtriggerPbound"+mercenary,{"Parent":mercenary,"ParentXOffset":-35,"ParentYOffset":-2});
+        mercenary=CreateThing("mercenarybandit.png",4850,1000,16,"GravityDrag1Hp70DumbaiLasher",{"WalkSpeed":-1,"SlashRight":true,"SlashLeft":false,"SlashCooldownMax":60,"SlashCooldown":0,"Team":1,"Hp":200,"MaxHp":200});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentRightlashtriggerPbound"+mercenary,{"Parent":mercenary,"ParentXOffset":35,"ParentYOffset":-2});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentLeftlashtriggerPbound"+mercenary,{"Parent":mercenary,"ParentXOffset":-35,"ParentYOffset":-2});
+        for(var l = 0; l<11;l++){
+             CreateThing("grass.png",(l*32)+5500,1082,16,"Static",{});
+        }
+        
+        
+        //town start
+        CreateThing("frenchhouse1.png",6400,902,16,"StaticBackground",{});
+         CreateThing("frenchhouse2.png",7000,702,16,"StaticBackground",{});
+        //newspaper1
+        CreateThing("newspaper.png",6720,1070,16,"StaticBackgroundTriggerUitrigger",{"UI":{"Sprite":"revnp1.png","X":thingX[player],"Y":thingY[player],"Size":0,"Raws1":"TriggerDecay10Static","Raws2":{}},"UIOffsetX":0,"UIOffsetY":-200});
+        //newspaper2
+        CreateThing("newspaper.png",7020,1070,16,"StaticBackgroundTriggerUitrigger",{"UI":{"Sprite":"revnp2.png","X":thingX[player],"Y":thingY[player],"Size":0,"Raws1":"TriggerDecay10Static","Raws2":{}},"UIOffsetX":0,"UIOffsetY":-200});
+         //newspaper3
+        CreateThing("newspaper.png",7720,1070,16,"StaticBackgroundTriggerUitrigger",{"UI":{"Sprite":"revnp3.png","X":thingX[player],"Y":thingY[player],"Size":0,"Raws1":"TriggerDecay10Static","Raws2":{}},"UIOffsetX":0,"UIOffsetY":-200});
+          //newspaper4
+        CreateThing("newspaper.png",7990,1070,16,"StaticBackgroundTriggerUitrigger",{"UI":{"Sprite":"revnp4.png","X":thingX[player],"Y":thingY[player],"Size":0,"Raws1":"TriggerDecay10Static","Raws2":{}},"UIOffsetX":0,"UIOffsetY":-200});
+        //newspaper5
+        CreateThing("newspaper.png",8390,1070,16,"StaticBackgroundTriggerUitrigger",{"UI":{"Sprite":"revnp5.png","X":thingX[player],"Y":thingY[player],"Size":0,"Raws1":"TriggerDecay10Static","Raws2":{}},"UIOffsetX":0,"UIOffsetY":-200});
+        for(var l = 0; l<200;l++){
+             CreateThing("stonefloor.png",(l*32)+6400,1100,16,"Static",{});
+        }
+        //horse
+        //horse = CreateThing("horse1.png",7400,1060,32,"StaticAnimated",{"AnimationFrames":["horse1.png","horse2.png","horse3.png","horse4.png","horse3.png","horse2.png"],"AnimationTimer":0,"AnimationFrameLenghth":3,"AnimationLoop":true,"PlayAnimation":true});
+        //unnecicary hill
+        //for(var l = 0; l<10;l++){
+             //CreateThing("stonefloor.png",(l*32)+7420,1082,16,"Static",{});
+        //}
+        for(var l = 0; l<10;l++){
+             CreateThing("stonefloor.png",(l*32)+8490,1082,16,"Static",{});
+        }
+        //Gulliotine
+        gulliotine = CreateThing("gulliotine1.png",8600,1030,40,"StaticTriggerAnimatedGulliotine",{"AnimationFrames":["gulliotine1.png","gulliotine2.png","gulliotine3.png","gulliotine4.png"],"AnimationTimer":-20,"AnimationFrameLenghth":5,"AnimationLoop":false,"PlayAnimation":false});
+        var revolutionary=CreateThing("angryrevolutionary.png",6350,1000,16,"GravityDrag1Hp70DumbaiLasher",{"WalkSpeed":-1,"SlashRight":true,"SlashLeft":false,"SlashCooldownMax":60,"SlashCooldown":0,"Team":1,"Hp":400,"MaxHp":400});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentRightlashtriggerPbound"+revolutionary,{"Parent":revolutionary,"ParentXOffset":35,"ParentYOffset":-2});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentLeftlashtriggerPbound"+revolutionary,{"Parent":revolutionary,"ParentXOffset":-35,"ParentYOffset":-2});
+        revolutionary=CreateThing("angryrevolutionary.png",6950,1000,16,"GravityDrag1Hp70DumbaiLasher",{"WalkSpeed":-1,"SlashRight":true,"SlashLeft":false,"SlashCooldownMax":60,"SlashCooldown":0,"Team":1,"Hp":400,"MaxHp":400});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentRightlashtriggerPbound"+revolutionary,{"Parent":revolutionary,"ParentXOffset":35,"ParentYOffset":-2});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentLeftlashtriggerPbound"+revolutionary,{"Parent":revolutionary,"ParentXOffset":-35,"ParentYOffset":-2});
+        revolutionary=CreateThing("angryrevolutionary.png",7650,1000,16,"GravityDrag1Hp70DumbaiLasher",{"WalkSpeed":-1,"SlashRight":true,"SlashLeft":false,"SlashCooldownMax":60,"SlashCooldown":0,"Team":1,"Hp":400,"MaxHp":400});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentRightlashtriggerPbound"+revolutionary,{"Parent":revolutionary,"ParentXOffset":35,"ParentYOffset":-2});
+        CreateThing("no.png",1350,1000,16,"StaticTriggerParentLeftlashtriggerPbound"+revolutionary,{"Parent":revolutionary,"ParentXOffset":-35,"ParentYOffset":-2});
+    }
+       setInterval(GameLoop,40);
+       setInterval(MakeThing,400000000000);
+addEventListener("keydown", KeyCheck1);
+addEventListener("keyup",KeyCheck2);
+        </script>
+
+    </body>
+</html> 
